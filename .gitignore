@@ -1,0 +1,28 @@
+# ---- Secrets: never upload these ----
+.env
+
+# ---- Private Python environment created by setup.bat (this is the 15,000+ files) ----
+.venv/
+venv/
+env/
+
+# ---- Python junk ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Your personal B.R.O. settings (they contain your own project folder path) ----
+# B.R.O. creates bro.json again by itself the first time it runs.
+bro.json
+
+# ---- Notes B.R.O. saves inside whichever project it is helping with ----
+.assistant_notes.md
+
+# ---- Editor and Windows files ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log

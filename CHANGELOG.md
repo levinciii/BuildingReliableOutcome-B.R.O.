@@ -1,0 +1,111 @@
+# Changelog
+
+All notable changes to **B.R.O. (Building Reliable Outcome)** are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Version numbers are pre-1.0, so anything may still change.
+
+## [Unreleased]
+
+Nothing yet.
+
+## [0.1.1] - 2026-10-24
+
+### Fixed
+- Crash on startup when the project contained a broken link, such as an npm workspace link in `node_modules`
+  that points to a missing folder (`FileNotFoundError: [WinError 3]`).
+
+### Changed
+- The project file scanner now skips heavy folders (`node_modules`, `.git`, `.venv`, `dist`, `build`, `.next`,
+  `.nuxt`, `.turbo`, `.cache`, `.svn`, `.hg`, `coverage`, `site-packages`) without opening them, which also
+  makes it much faster on large projects.
+- Links are no longer followed, unreadable files and folders are ignored instead of raising errors,
+  and scanning stops at a maximum folder depth to avoid link loops.
+- File listings stop early on huge projects and tell the model to ask for a sub-folder.
+
+## [0.1.0] - 2026-10-21
+
+The hands-free release.
+
+### Added
+- **Hands-free listening.** The microphone stays open; say "Hey bro" followed by your request. No key press needed.
+  - After an answer, B.R.O. keeps listening for 45 seconds (`conversation_seconds`) so you can follow up without
+    repeating the wake word.
+  - Wake words are configurable (`wake_words`) and tolerate spellings like "B.R.O." and "b r o".
+  - Background noise is measured at startup and the speech threshold is set automatically.
+  - A short beep confirms that B.R.O. heard you (Windows).
+  - It never hears its own voice: audio that piled up while it was speaking is discarded.
+  - Listening modes: `wake` (default), `always`, `push` (press Enter), `text` (typing only).
+- **Switchable model profiles** in the new `bro.json`. Supported types:
+  - `ollama` - local models through Ollama.
+  - `claude` - Anthropic Claude.
+  - `openai` - any OpenAI-compatible service (OpenAI, LM Studio, Groq, OpenRouter, llama.cpp, and others).
+  - Built-in profiles: `local`, `local-small`, `local-big`, `claude`, `openai`, `lmstudio`, `custom`.
+- **Switch models any time**: by voice ("switch model to Claude"), by typing (`/model claude`), with
+  `--model <name>` at startup, or by editing `active_model`. The choice is remembered.
+- **Voice commands**: switch model, which model, list models, reset conversation, goodbye.
+- **Optional voice approval** (`"approvals": "voice"`) for file edits and commands. Only a clear "yes" approves.
+- **One-click Windows setup**: `setup.bat` creates a private `.venv`, installs libraries, and downloads the model;
+  `run.bat` starts the assistant.
+- **`--doctor`** checks libraries, microphone, and model, and downloads a missing Ollama model.
+- **`.env` file** for API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CUSTOM_API_KEY`) with a `.env.example` template.
+- The project folder is asked for once and remembered.
+- Ollama is started automatically if it is installed but not running, and the model is pre-loaded in the background.
+- Command-line options: `--project`, `--model`, `--models`, `--mode`, `--text`, `--mute`, `--doctor`.
+- Spoken replies are capped at 700 characters (`max_spoken_chars`); the full answer stays on screen.
+- Friendly, specific error messages for a missing API key, an unreachable server, or a model that is not downloaded.
+- Failed requests are rolled back so the next question starts cleanly.
+
+### Changed
+- Default model is now `qwen3:4b` (about 2.5 GB), chosen for a 16 GB RAM PC without a supported GPU.
+  Qwen3 "thinking" mode is turned off by default to save time on slow CPUs.
+- Local models receive a shorter project file list (40 files) in their instructions, so the first answer is faster.
+- All three model backends now live in `brain.py`; `ollama_brain.py` was merged into it.
+- Settings moved from `VA_*` environment variables to `bro.json`.
+- The `anthropic` library is now part of `requirements.txt`, so switching to Claude works without extra installs.
+- Replies are labeled `B.R.O.:` and approval prompts read "B.R.O. wants to ...".
+- Speech recognition is given a vocabulary hint to recognise "bro" and coding words more reliably.
+
+### Fixed
+- Installing on Windows no longer fails with "Access is denied" (libraries now install into a private `.venv`,
+  so no administrator rights are needed).
+
+## [0.0.2] - 2026-10-20
+
+### Added
+- **Local AI brain through Ollama**, so the assistant can run fully on your own PC with no API key and no token costs.
+- Backend switch (`VA_BACKEND`) between local Ollama and cloud Claude.
+- Shared system prompt (`prompt.py`) used by every brain.
+- Safety limit on tool calls per request, to stop a confused model from looping forever.
+- Hidden "thinking" text from reasoning models is stripped before it is shown or spoken.
+
+### Changed
+- **Renamed the project to Building Reliable Outcome (B.R.O.)**; the assistant introduces itself by that name
+  and answers to "bro".
+- Setup instructions now start with Ollama instead of an API key.
+
+## [0.0.1] - 2026-10-20
+
+Initial release.
+
+### Added
+- Voice coding assistant for the terminal, written in Python.
+- Pipeline of microphone, local speech-to-text ([faster-whisper](https://github.com/SYSTRAN/faster-whisper)),
+  AI model, and text-to-speech with the system voice ([pyttsx3](https://github.com/nateshmbhat/pyttsx3)).
+- Press Enter to talk, or type a message; say or type "goodbye" to quit.
+- Project tools the AI can use: list files, read a file, search code, write a file, run a command, save a note.
+- Safety: all file access is locked to the chosen project folder, and writing a file or running a command always
+  requires a typed `y` first.
+- Notes saved to `.assistant_notes.md` so decisions and TODOs are remembered between sessions.
+- Cloud brain using Anthropic Claude (API key required).
+- Code blocks, links, and markdown are skipped when replies are read aloud.
+
+## Known limitations
+
+- On an older CPU, a local model answers slowly (tens of seconds is likely), and the first answer is slower while
+  the model loads.
+- GPU acceleration was not verified for older AMD cards such as the Radeon RX 550.
+- Hands-free mode needs the terminal window left open; it is not a hidden background service.
+- Typed approval is the default because voice approval is less safe (a misheard "yes" would go through).
+- Small local models make more coding mistakes than cloud models; review code before approving a change.
+- Cloud model names change over time; if a provider rejects one, update it in `bro.json`.
