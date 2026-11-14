@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B.R.O. - Building Reliable Outcome</title>
+  <meta name="description" content="A hands-free voice coding assistant that runs in your browser. Say &quot;Hey bro&quot; and ask about your project.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <a class="skip" href="#composer-input">Skip to the message box</a>
+
+  <div class="app" id="app">
+    <div class="scrim" id="scrim" hidden></div>
+
+    <aside class="side" id="side" aria-label="Controls">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">B</span>
+        <div>
+          <p class="brand-name">B.R.O.</p>
+          <p class="brand-sub">Building Reliable Outcome</p>
+        </div>
+      </div>
+
+      <section class="card" aria-labelledby="h-project">
+        <h2 id="h-project">Project</h2>
+        <p class="project-name" id="project-name">No folder chosen yet</p>
+        <p class="muted small" id="project-meta">Pick the folder you want help with.</p>
+        <button class="btn primary block" id="btn-folder" type="button">Choose project folder</button>
+        <button class="link small" id="btn-upload" type="button">Or upload a folder (read-only)</button>
+        <input type="file" id="upload-input" webkitdirectory multiple hidden>
+        <div class="changes" id="changes" hidden>
+          <p class="small"><strong>Files B.R.O. prepared</strong></p>
+          <ul id="changes-list"></ul>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-model">
+        <h2 id="h-model">Model</h2>
+        <label class="sr-only" for="model-select">AI model</label>
+        <select id="model-select"></select>
+        <p class="muted small" id="model-status"></p>
+        <button class="link small" id="btn-settings-side" type="button">Model &amp; voice settings</button>
+      </section>
+
+      <section class="card voice" aria-labelledby="h-voice">
+        <h2 id="h-voice">Voice</h2>
+        <button class="orb" id="orb" type="button" data-state="off" aria-pressed="false" aria-label="Start listening">
+          <span class="orb-ring"></span>
+          <span class="orb-core">
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </span>
+        </button>
+        <p class="orb-status" id="orb-status" role="status">Tap to start listening</p>
+        <p class="muted small center" id="orb-hint"></p>
+        <label class="field">
+          <span>Listening mode</span>
+          <select id="mode-select">
+            <option value="wake">Wake word: say “Hey bro”</option>
+            <option value="always">Always listening</option>
+            <option value="push">Push to talk</option>
+          </select>
+        </label>
+      </section>
+
+      <p class="privacy small muted">
+        Your keys, folder and chats stay in this browser. Your questions and the project text you ask about go to the
+        model company you choose. In Chrome, voice recognition is done by Google's speech service.
+      </p>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu" id="btn-menu" type="button" aria-label="Open controls" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/></svg>
+        </button>
+        <h1>B.R.O.</h1>
+        <span class="pill" id="top-model"></span>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="btn-new" type="button">New chat</button>
+        <button class="btn ghost" id="btn-settings" type="button">Settings</button>
+      </header>
+
+      <div class="banner" id="banner" hidden></div>
+
+      <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <p class="interim" id="interim" aria-hidden="true"></p>
+        <div class="composer-row">
+          <label class="sr-only" for="composer-input">Message</label>
+          <textarea id="composer-input" rows="1" placeholder="Ask about your project, or say “Hey bro…”"></textarea>
+          <button type="button" class="icon-btn mic" id="btn-mic" aria-label="Start listening">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </button>
+          <button type="submit" class="btn primary" id="btn-send">Send</button>
+          <button type="button" class="btn danger" id="btn-stop" hidden>Stop</button>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form method="dialog" class="dlg" id="settings-form">
+      <header class="dlg-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn" type="button" id="btn-close-settings" aria-label="Close settings">&times;</button>
+      </header>
+      <div class="dlg-body">
+        <section>
+          <h3>Models</h3>
+          <p class="muted small">
+            Choose which AI answers you. Keys are kept in this browser and sent only to the provider of that model.
+            For a model on your own PC, use Ollama (see the README for one setting it needs).
+          </p>
+          <div id="profiles" class="profiles"></div>
+          <button type="button" class="btn" id="btn-add-profile">Add a model</button>
+          <label class="check">
+            <input type="checkbox" id="remember-keys">
+            <span>Remember API keys on this device (otherwise they are forgotten when you close the tab)</span>
+          </label>
+        </section>
+        <section>
+          <h3>Voice</h3>
+          <div class="grid2">
+            <label class="field"><span>Wake words (comma separated)</span><input id="set-wake" type="text"></label>
+            <label class="field"><span>Keep listening after an answer (seconds)</span><input id="set-window" type="number" min="5" max="300" step="5"></label>
+            <label class="field"><span>Read answers aloud</span>
+              <select id="set-speak">
+                <option value="voice">When I spoke the question</option>
+                <option value="always">Always</option>
+                <option value="off">Never</option>
+              </select>
+            </label>
+            <label class="field"><span>Voice</span><select id="set-voice"></select></label>
+            <label class="field"><span>Speaking speed</span><input id="set-rate" type="range" min="0.7" max="1.5" step="0.1"></label>
+          </div>
+        </section>
+      </div>
+      <footer class="dlg-foot">
+        <button type="button" class="btn ghost" id="btn-reset-settings">Reset everything</button>
+        <span class="spacer"></span>
+        <button class="btn" type="button" id="btn-cancel-settings">Cancel</button>
+        <button class="btn primary" value="save">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="approve-dialog" aria-labelledby="approve-title">
+    <form method="dialog" class="dlg">
+      <header class="dlg-head"><h2 id="approve-title">Allow this change?</h2></header>
+      <div class="dlg-body">
+        <p class="muted" id="approve-summary"></p>
+        <div class="diff" id="approve-preview" tabindex="0" role="region" aria-label="Preview of the change"></div>
+      </div>
+      <footer class="dlg-foot">
+        <span class="spacer"></span>
+        <button class="btn" value="deny" autofocus>Don't allow</button>
+        <button class="btn primary" value="allow">Allow</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

@@ -9,6 +9,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet.
 
+## [0.2.0] - 2026-11-14
+
+### Added
+- **Web version** in the `web/` folder: a static site (no server, no build step) that deploys to Vercel.
+  Includes a simple responsive UI with light and dark themes, chat with code blocks and copy buttons,
+  voice with the "Hey bro" wake word (Chrome/Edge), spoken answers, and a Settings dialog for models and voice.
+- Project access in the browser: pick a folder to read and write (Chrome/Edge) or upload a folder read-only.
+  Every file change shows a before/after preview and needs approval; uploaded folders produce downloads instead.
+- Model switching in the browser: Claude, OpenAI-compatible services and Ollama, by menu or by voice/typed command.
+- `web/vercel.json` with a strict Content-Security-Policy and other security headers, and `web/README.md`
+  with deploy steps.
+
+### Security
+- API keys are never part of the site. They stay in the visitor's browser (this tab only unless "remember" is ticked).
+- AI replies are rendered as safe text, so a hostile reply cannot inject HTML or scripts.
+- Paths outside the project folder, or absolute paths, are refused before any approval prompt.
+
+### Not available on the web
+- Running terminal commands (a website cannot do this safely). Use the desktop version.
+
 ## [0.1.1] - 2026-10-24
 
 ### Fixed
