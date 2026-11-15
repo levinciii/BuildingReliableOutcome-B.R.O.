@@ -7,7 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- README rewritten as a step-by-step user manual (install, first conversation, commands, models, settings, safety,
+  troubleshooting, web version).
 
 ## [0.2.0] - 2026-11-14
 
