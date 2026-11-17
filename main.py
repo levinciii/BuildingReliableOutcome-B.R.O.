@@ -10,6 +10,8 @@ from pathlib import Path
 
 import commands
 import config
+import plugins
+import sessions
 import wake
 from brain import BrainError, make_brain
 from tools import ProjectTools
@@ -37,6 +39,7 @@ class App:
         self.window = float(settings.get("conversation_seconds", 45))
         self.awake_until = 0.0
         self.sounds = bool(settings.get("sounds", True))
+        self.session_id = sessions.new_id()
 
     # ------------------------------------------------------------ output
     def chime(self, kind):
@@ -57,7 +60,7 @@ class App:
             self.speaker = None
         if self.listener:
             time.sleep(0.3)           # let the room echo die down
-            self.listener.flush()     # and never hear my own voice
+            self.listener.flush()     # and never hear its own voice
 
     def say(self, text, spoken=None):
         print(f"\nB.R.O.: {text}\n")
@@ -76,11 +79,11 @@ class App:
     def switch_model(self, spoken_name):
         name = commands.match_profile(spoken_name, self.settings["models"])
         if not name:
-            return f"I don't have a model called {spoken_name}. Say 'list models' to hear what I have."
+            return f"No model called {spoken_name}. Say 'list models' to hear the options."
         try:
             brain = self.load_brain(name)
         except BrainError as e:
-            return f"I can't switch to {name}. {e}"
+            return f"Can't switch to {name}. {e}"
         self.brain, self.profile_name = brain, name
         self.settings["active_model"] = name
         config.save_settings(self.settings)
@@ -97,14 +100,14 @@ class App:
             return self._voice_confirm(prompt)
         if hands_free:
             self.chime("ask")
-            self.speak("I need your approval. Please check the terminal.")
+            self.speak("Approval needed. Check the terminal.")
         answer = input(f"\n  ? {prompt}  Allow? [y/N] ").strip().lower()
         return answer in {"y", "yes"}
 
     def _voice_confirm(self, prompt):
         print(f"\n  ? {prompt}")
         self.chime("ask")
-        self.speak(f"{prompt}. Should I go ahead? Say yes or no.")
+        self.speak(f"{prompt}. Go ahead? Say yes or no.")
         for _ in range(2):
             text = self.listener.listen(wait_seconds=10)
             if not text:
@@ -116,8 +119,28 @@ class App:
                 return True
             if answer in NO:
                 return False
-        print("  (no clear answer, so I did not do it)")
+        print("  (no clear answer, so nothing was done)")
         return False
+
+    def autosave(self):
+        """Save the conversation on this computer (secrets removed). Failure here must never interrupt the work."""
+        if not self.settings.get("save_sessions", True):
+            return
+        try:
+            secrets = [v for k, v in __import__("os").environ.items() if k.endswith("_API_KEY") and v]
+            sessions.save(self.session_id, self.brain.messages, self.tools.root, self.profile_name, secrets)
+        except Exception:
+            pass
+
+    def resume(self):
+        """Continue the most recent saved conversation for this project."""
+        found = sessions.latest(self.tools.root)
+        if not found:
+            print("  (no saved conversation for this project yet)")
+            return
+        self.brain.messages = list(found["turns"])
+        self.session_id = found["id"]
+        print(f"  Resumed: {found['title']}  ({found['updated']})")
 
     # ------------------------------------------------------------ handling what you said
     def handle(self, text):
@@ -128,9 +151,10 @@ class App:
         print("  thinking...")
         try:
             self.say(self.brain.ask(text) or "(no answer)")
+            self.autosave()
         except BrainError as e:
             self.brain.rollback()
-            self.say(str(e), spoken="I hit a problem. Check the terminal.")
+            self.say(str(e), spoken="Hit a problem. Check the terminal.")
         except Exception as e:
             self.brain.rollback()
             self.say(f"Something went wrong: {e}", spoken="Something went wrong. Check the terminal.")
@@ -143,14 +167,15 @@ class App:
         if cmd == "switch":
             self.say(self.switch_model(arg))
         elif cmd == "which":
-            self.say(f"I'm using {self.brain.describe()}.")
+            self.say(f"Running on {self.brain.describe()}.")
         elif cmd == "list":
             print("\n" + self.models_table())
             names = ", ".join(self.settings["models"])
-            self.say(f"Models: {names}. Active: {self.profile_name}.", spoken=f"My models are {names}. I'm using {self.profile_name}.")
+            self.say(f"Models: {names}. Active: {self.profile_name}.", spoken=f"Available models: {names}. Running on {self.profile_name}.")
         elif cmd == "reset":
             self.brain.reset()
-            self.say("Okay, starting a fresh conversation.")
+            self.session_id = sessions.new_id()
+            self.say("Starting a fresh conversation.")
         else:
             self.say(commands.HELP_TEXT)
         return True
@@ -229,7 +254,7 @@ def resolve_project(path_arg, settings):
         if path:
             print(f"The saved project folder no longer exists: {path}")
         if not sys.stdin.isatty():
-            sys.exit("Tell me the project folder with:  python main.py --project <folder>")
+            sys.exit("Pass the project folder with:  python main.py --project <folder>")
         while True:
             typed = input("Paste the folder path of the project you want help with: ").strip().strip('"').strip("'")
             if typed and Path(typed).expanduser().is_dir():
@@ -252,6 +277,8 @@ def build_parser():
     p.add_argument("--mute", action="store_true", help="don't speak replies aloud")
     p.add_argument("--models", action="store_true", help="list the available models and exit")
     p.add_argument("--doctor", action="store_true", help="check the setup, download the model, and exit")
+    p.add_argument("--resume", action="store_true", help="continue the last saved conversation for this project")
+    p.add_argument("--clear-sessions", action="store_true", help="delete every saved conversation and exit")
     return p
 
 
@@ -264,6 +291,16 @@ def main():
     args = build_parser().parse_args()
     config.load_env()
     settings = config.load_settings()
+
+    if args.clear_sessions:
+        print(f"Deleted {sessions.clear()} saved conversations.")
+        return
+
+    loaded, problems = plugins.load_plugins()
+    if loaded:
+        print(f"Plugins loaded: {', '.join(loaded)}")
+    for problem in problems:
+        print(f"  Plugin skipped - {problem}")
 
     if args.models:
         print("Models (* = active). Change with --model <name> or say 'switch model to <name>'.\n")
@@ -312,6 +349,9 @@ def main():
         app.start_brain()
     except BrainError as e:
         sys.exit(f"\n{e}\n\nTip: run  run.bat --doctor  to check everything, or  run.bat --model <name>  to use another model.")
+
+    if args.resume:
+        app.resume()
 
     print("\n=== Building Reliable Outcome (B.R.O.) ===")
     print(f"Project: {root}")

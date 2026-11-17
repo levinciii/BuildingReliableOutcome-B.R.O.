@@ -134,7 +134,7 @@ class BaseBrain:
         raise NotImplementedError
 
 
-LOOP_MESSAGE = "I got stuck in a loop of tool calls. Try asking again in a simpler way."
+LOOP_MESSAGE = "Stuck in a loop of tool calls. Try asking again in a simpler way."
 
 
 # ---------------------------------------------------------------- Ollama (local)
@@ -153,7 +153,7 @@ class OllamaBrain(BaseBrain):
     def prepare(self):
         if not ensure_ollama(self.base):
             raise BrainError(
-                "Ollama isn't running and I couldn't start it. Install it from https://ollama.com, "
+                "Ollama isn't running and could not be started. Install it from https://ollama.com, "
                 "open the Ollama app once, then try again."
             )
         if not ollama_has(self.base, self.model):
@@ -189,7 +189,7 @@ class OllamaBrain(BaseBrain):
             except requests.ConnectionError:
                 if attempt == 0 and ensure_ollama(self.base):
                     continue
-                raise BrainError("I can't reach Ollama. Open the Ollama app (or run `ollama serve`) and try again.")
+                raise BrainError("Can't reach Ollama. Open the Ollama app (or run `ollama serve`) and try again.")
             except requests.Timeout:
                 raise BrainError("The local model took too long. Try a smaller model, e.g. say 'switch model to local small'.")
             if r.status_code == 400 and "think" in payload and "think" in r.text.lower():
@@ -261,7 +261,7 @@ class OpenAICompatBrain(BaseBrain):
             r = requests.post(self.base + "/chat/completions", json=payload, headers=self._headers(),
                               timeout=int(self.profile.get("timeout", 300)))
         except requests.ConnectionError:
-            raise BrainError(f"I can't reach {self.base}. Is the server running and the address right?")
+            raise BrainError(f"Can't reach {self.base}. Is the server running and the address right?")
         except requests.Timeout:
             raise BrainError("The model took too long to answer.")
         if r.status_code in (401, 403):
@@ -331,7 +331,7 @@ class ClaudeBrain(BaseBrain):
             except anthropic.AuthenticationError:
                 raise BrainError("Claude rejected the API key. Check ANTHROPIC_API_KEY in the .env file.")
             except anthropic.APIConnectionError:
-                raise BrainError("I can't reach Claude. Check your internet connection.")
+                raise BrainError("Can't reach Claude. Check your internet connection.")
             except anthropic.APIStatusError as e:
                 raise BrainError(f"Claude returned an error ({e.status_code}): {e.message}")
             self.messages.append({"role": "assistant", "content": resp.content})

@@ -7,9 +7,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-11-17
+
 ### Changed
-- README rewritten as a step-by-step user manual (install, first conversation, commands, models, settings, safety,
-  troubleshooting, web version).
+- **Teammate voice.** B.R.O. now talks like a co-worker working toward the same goal and avoids first-person phrasing
+  in every reply, including built-in spoken replies ("Running on Claude." instead of "I'm using Claude.").
+- **Coding only.** The instructions limit B.R.O. to the project; unrelated questions get a short, friendly redirect.
+- B.R.O. is told never to repeat keys or passwords it finds in project files.
+- README rewritten as a step-by-step user manual, with sections on saving progress, privacy and making the app your own.
+
+### Added
+- **Saved progress, privately.** Desktop: conversations are saved in `sessions/` with secrets removed; `--resume` and `--clear-sessions`;
+  `"save_sessions"` setting. Web: History list in the sidebar, secrets removed before saving, delete per chat or all at once.
+- **Key vault (web).** Optional passphrase lock encrypts saved API keys on the device (AES-256-GCM, PBKDF2). A wrong passphrase is refused,
+  and a locked vault is never overwritten.
+- **Encrypted backup and restore (web).** `.bro` files protected by a passphrase; keys are included only if asked.
+- **Make it yours.** MIT `LICENSE`, `CONTRIBUTING.md`, issue templates, `docs/EXTENDING.md`, `docs/PRIVACY.md`.
+  Desktop `plugins/` folder (drop in a `.py` file to add a tool; includes a `find_todos.py` example) and optional `persona.md`.
+- **Phone support.** The web app is installable (manifest, icons, offline shell). New **Import a public GitHub repo** for devices without a folder picker.
+  Guide in `docs/PHONE.md`, including why a shared VM-hosted model is not the default and how to run a private one.
+- **Landing page** (`web/index.html`) with Ko-fi, GitHub and LinkedIn links. The app moved to `web/app.html`.
+
+### Fixed
+- A drive-letter or doubled-backslash path in a web write request could reach the approval prompt; it is now refused first.
+- The "say Hey bro first" hint vanished immediately in web voice mode.
 
 ## [0.2.0] - 2026-11-14
 

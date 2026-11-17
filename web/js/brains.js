@@ -13,7 +13,7 @@ export class BrainError extends Error {
 
 const MAX_STEPS = 12;
 const MAX_HISTORY = 40;
-const LOOP_MESSAGE = 'I got stuck in a loop of tool calls. Try asking again in a simpler way.';
+const LOOP_MESSAGE = 'Stuck in a loop of tool calls. Try asking again in a simpler way.';
 
 export const stripThinking = (text) => String(text ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
@@ -35,12 +35,12 @@ function friendlyHttpError(status, bodyText, kind, profile) {
 function networkError(kind, profile) {
   if (kind === 'ollama') {
     return new BrainError(
-      `I can't reach Ollama at ${profile.baseUrl}. Make sure Ollama is running, and that it allows this website: ` +
+      `Can't reach Ollama at ${profile.baseUrl}. Make sure Ollama is running, and that it allows this website: ` +
         `set the environment variable OLLAMA_ORIGINS to ${location.origin} and restart Ollama. ` +
         `If your browser asks to allow access to local devices, choose Allow.`,
     );
   }
-  return new BrainError(`I can't reach ${profile.baseUrl || 'the service'}. Check your internet connection and the base URL in Settings.`);
+  return new BrainError(`Can't reach ${profile.baseUrl || 'the service'}. Check your internet connection and the base URL in Settings.`);
 }
 
 async function postJson(url, { headers = {}, body, signal, timeoutMs, kind, profile }) {
@@ -185,7 +185,7 @@ class OpenAIBrain extends BaseBrain {
         profile: this.profile,
       });
       const message = data?.choices?.[0]?.message;
-      if (!message) throw new BrainError('The service sent back an answer I could not read.');
+      if (!message) throw new BrainError('The service sent back an answer that could not be read.');
       const calls = message.tool_calls || [];
       const stored = { role: 'assistant', content: message.content || '' };
       if (calls.length) {

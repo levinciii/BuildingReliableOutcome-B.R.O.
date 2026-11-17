@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS = {
   voiceURI: '',
   rate: 1,
   rememberKeys: false,
+  lockKeys: false, // keep saved keys encrypted with a passphrase
+  saveChats: true, // save chats on this device only (secrets removed)
 };
 
 const clone = (x) => JSON.parse(JSON.stringify(x));

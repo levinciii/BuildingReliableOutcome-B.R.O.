@@ -259,3 +259,53 @@ export class UploadProject extends BaseProject {
     return [...this.overlay.entries()].map(([path, content]) => ({ path, content }));
   }
 }
+
+/** Pull "owner/repo" out of "https://github.com/owner/repo", "github.com/owner/repo/tree/main" or "owner/repo". */
+export function parseGithubRepo(input) {
+  const text = String(input ?? '').trim().replace(/\.git$/i, '').replace(/\/+$/, '');
+  const match = text.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)/i) || text.match(/^([\w.-]+)\/([\w.-]+)$/);
+  if (!match) throw new ProjectError('Use a GitHub address like https://github.com/owner/repo');
+  return { owner: match[1], repo: match[2].replace(/\.git$/i, '') };
+}
+
+/**
+ * A public GitHub repository, read-only. Made for phones, which cannot pick a folder: files are fetched on demand
+ * from GitHub and nothing is sent anywhere else. No GitHub token is ever used, so private repos are not reachable.
+ */
+export class GithubProject extends UploadProject {
+  static async load(input, fetchImpl = fetch) {
+    const { owner, repo } = parseGithubRepo(input);
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    const info = await fetchImpl(api, { headers: { Accept: 'application/vnd.github+json' } });
+    if (info.status === 404) throw new ProjectError('That repository was not found, or it is private. Only public repositories can be imported.');
+    if (info.status === 403) throw new ProjectError('GitHub is limiting requests from this network. Try again in a little while.');
+    if (!info.ok) throw new ProjectError(`GitHub answered with an error (${info.status}).`);
+    const { default_branch: branch = 'main' } = await info.json();
+    const treeResponse = await fetchImpl(`${api}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+    if (!treeResponse.ok) throw new ProjectError(`Could not read the file list (${treeResponse.status}).`);
+    const tree = await treeResponse.json();
+    const project = new GithubProject();
+    project.name = `${owner}/${repo}`;
+    project.truncated = Boolean(tree.truncated);
+    for (const entry of tree.tree || []) {
+      if (entry.type !== 'blob') continue;
+      const parts = entry.path.split('/');
+      if (parts.slice(0, -1).some((s) => IGNORE_DIRS.has(s)) || parts.length > MAX_DEPTH + 1) continue;
+      const url = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${parts.map(encodeURIComponent).join('/')}`;
+      project.files.set(entry.path, {
+        size: entry.size ?? 0,
+        text: async () => {
+          const response = await fetchImpl(url);
+          if (!response.ok) throw new ProjectError(`Could not download ${entry.path} (${response.status}).`);
+          return response.text();
+        },
+      });
+    }
+    if (!project.files.size) throw new ProjectError('That repository has no readable files.');
+    return project;
+  }
+
+  constructor() {
+    super([]);
+  }
+}

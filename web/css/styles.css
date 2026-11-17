@@ -228,3 +228,17 @@ dialog::backdrop { background: rgba(6, 8, 18, 0.6); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- history, privacy, passphrase ---------- */
+.history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; }
+.history li { display: flex; align-items: center; gap: 4px; }
+.history .open { flex: 1; min-width: 0; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; cursor: pointer; display: flex; flex-direction: column; }
+.history .open:hover, .history .open[aria-current="true"] { background: var(--panel); border-color: var(--line); }
+.history .title { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history .when { font-size: 0.75rem; color: var(--muted); }
+.history .del { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 6px 8px; border-radius: 8px; }
+.history .del:hover { color: var(--bad); background: var(--panel); }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dlg-small { max-width: 440px; }
+#pass-dialog { width: min(440px, 94vw); }
+.fail-text { color: var(--bad); min-height: 1.2em; }

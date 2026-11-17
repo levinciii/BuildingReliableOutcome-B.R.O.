@@ -26,3 +26,9 @@ bro.json
 Thumbs.db
 desktop.ini
 *.log
+
+# ---- Private chat history saved on your computer ----
+sessions/
+
+# ---- Your personal extra instructions for B.R.O. ----
+persona.md

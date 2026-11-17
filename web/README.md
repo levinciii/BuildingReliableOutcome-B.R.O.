@@ -35,7 +35,7 @@ site itself).
 
 ## Using it
 
-1. Open the site in Chrome or Edge.
+1. Open the site in Chrome or Edge. The home page is a landing page; **Open the app** goes to `app.html`.
 2. **Settings**: paste an API key for the model you want (Claude or OpenAI-compatible), or use Ollama.
 3. **Choose project folder**, tap the mic, say "Hey bro, give me an overview of this project".
 
@@ -44,6 +44,9 @@ site itself).
 - **Never put your own API key in the code or in Vercel settings.** The site would hand it to every visitor.
   Each person pastes their own key in Settings.
 - Keys are kept for the current tab only, unless "Remember API keys on this device" is ticked.
+- **Lock saved keys** (Settings > Privacy) encrypts them on the device with a passphrase.
+- Chats are saved in the browser with keys and passwords removed. Turn this off or delete them in Settings. **Back up** makes an encrypted `.bro` file.
+- More detail: [../docs/PRIVACY.md](../docs/PRIVACY.md).
 - Your questions, and the project text the AI reads to answer them, are sent to the model company you chose.
 - In Chrome, speech recognition is performed by Google's speech service.
 
@@ -56,6 +59,16 @@ A website is only allowed to talk to your local Ollama if Ollama permits that si
 
 If it is not set, B.R.O. shows the exact address to allow. Some browsers refuse a secure (https) page talking to
 `http://localhost`; Chrome and Edge allow it.
+
+## Phones
+
+Open the site in Chrome and choose **Add to Home screen** to install it. There is no folder picker on phones, so use **Import a public GitHub repo**.
+See [../docs/PHONE.md](../docs/PHONE.md) for the approach and the VM question.
+
+## Make it your own
+
+Change the colours in `css/styles.css` and `css/landing.css`, the links on the landing page in `index.html`, and add tools in `js/tools.js`.
+Guide: [../docs/EXTENDING.md](../docs/EXTENDING.md).
 
 ## Run it locally
 

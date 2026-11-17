@@ -32,6 +32,8 @@ DEFAULT_SETTINGS = {
     # voice = you say yes/no out loud instead (convenient, but less safe)
     "approvals": "ask",
     "sounds": True,
+    # Save conversations in the "sessions" folder on this computer (secrets are removed first). Resume with --resume.
+    "save_sessions": True,
     "speech_model": "base.en",
     "audio": {
         "input_device": None,

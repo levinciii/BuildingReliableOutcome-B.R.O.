@@ -8,6 +8,7 @@ export class ChatView {
     this.typing = null;
     this.toolBox = null;
     this.welcomeEl = null;
+    this.log = []; // what is on screen, in a form that can be saved and replayed
     // "Copy" buttons on code blocks (one listener for all of them).
     root.addEventListener('click', (event) => {
       const button = event.target.closest('[data-copy]');
@@ -28,6 +29,17 @@ export class ChatView {
     this.typing = null;
     this.toolBox = null;
     this.welcomeEl = null;
+    this.log = [];
+  }
+
+  /** Show a saved conversation again. */
+  restore(log) {
+    this.clear();
+    for (const item of log) {
+      if (item.t === 'user') this.addUser(item.text);
+      else if (item.t === 'assistant') this.addAssistant(item.text, { error: Boolean(item.error) });
+      else if (item.t === 'tool') this.addTool(item.label).done(item.ok !== false);
+    }
   }
 
   add(el) {
@@ -49,11 +61,13 @@ export class ChatView {
 
   addUser(text) {
     this.toolBox = null;
+    this.log.push({ t: 'user', text });
     return this.add(h('div', { class: 'msg user' }, h('div', { class: 'bubble', text })));
   }
 
   addAssistant(text, { error = false } = {}) {
     this.toolBox = null;
+    this.log.push({ t: 'assistant', text, error });
     const bubble = h('div', { class: 'bubble md' });
     bubble.innerHTML = renderMarkdown(text); // safe: renderMarkdown escapes every piece of text
     return this.add(h('div', { class: `msg assistant${error ? ' error' : ''}` }, bubble));
@@ -67,11 +81,14 @@ export class ChatView {
     if (!this.toolBox || this.toolBox.parentNode !== this.root) {
       this.toolBox = this.add(h('div', { class: 'tools' }));
     }
+    const entry = { t: 'tool', label, ok: null };
+    this.log.push(entry);
     const chip = h('span', { class: 'chip', dataset: { state: 'run' }, text: label });
     this.toolBox.append(chip);
     this.scroll();
     return {
       done: (ok) => {
+        entry.ok = Boolean(ok);
         chip.dataset.state = ok ? 'ok' : 'fail';
       },
     };

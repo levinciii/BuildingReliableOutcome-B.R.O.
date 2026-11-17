@@ -1,7 +1,7 @@
 // The controller: connects the screen, voice, project, tools and the AI model.
-import { $, h, sleep, downloadText } from './util.js';
-import { loadSettings, saveSettings, loadKeys, saveKeys, clearAll, needsKey } from './settings.js';
-import { FsaProject, UploadProject } from './project.js';
+import { $, h, sleep, downloadText, uid } from './util.js';
+import { loadSettings, saveSettings, loadKeys, saveKeys, clearAll, needsKey, DEFAULT_SETTINGS } from './settings.js';
+import { FsaProject, UploadProject, GithubProject, ProjectError } from './project.js';
 import { ToolRunner } from './tools.js';
 import { buildSystem } from './prompt.js';
 import { makeBrain, testProfile, BrainError } from './brains.js';
@@ -9,10 +9,12 @@ import { Voice, cleanForSpeech } from './voice.js';
 import { buildRegex, parseWords, extract, isNoise } from './wake.js';
 import { parse as parseCommand, matchProfile, HELP_TEXT } from './commands.js';
 import { ChatView } from './chat.js';
-import { askApproval, openSettings } from './dialogs.js';
+import { askApproval, openSettings, askPassphrase } from './dialogs.js';
+import { saveChat, getChat, listChats, deleteChat, clearChats, turnsFromLog, hasVault, saveVault, openVault, removeVault, makeBackup, readBackup, mergeChats } from './store.js';
+import { MIN_PASSPHRASE } from './vault.js';
 
 const SUGGESTIONS = [
-  'Give me an overview of this project',
+  'Give an overview of this project',
   'Find where we handle errors',
   'Suggest three features that would help this project, then build the first one',
 ];
@@ -49,6 +51,9 @@ export class App {
     this.dialogOpen = false;
     this.awakeUntil = 0;
     this.toolHandles = new Map();
+    this.chatId = null;
+    this.pendingTurns = null; // earlier questions and answers, when a saved chat is reopened
+    this.vaultPass = null; // the key passphrase, kept in memory only
   }
 
   get profile() {
@@ -64,6 +69,8 @@ export class App {
     this.refreshOrb();
     this.showWelcome();
     this.showSupportBanner();
+    this.renderHistory();
+    if (hasVault()) this.unlockVault();
     setInterval(() => {
       if (this.listening) this.refreshOrb();
     }, 1000);
@@ -96,7 +103,18 @@ export class App {
       e.target.value = '';
       if (files.length) this.setProject(new UploadProject(files));
     });
+    $('#btn-github').addEventListener('click', () => this.importGithub());
     $('#btn-new').addEventListener('click', () => this.newChat());
+    $('#history-list').addEventListener('click', (e) => {
+      const open = e.target.closest('[data-open]');
+      const del = e.target.closest('[data-delete]');
+      if (open) this.openChat(open.dataset.open);
+      else if (del) {
+        deleteChat(del.dataset.delete);
+        if (this.chatId === del.dataset.delete) this.chatId = null;
+        this.renderHistory();
+      }
+    });
     $('#btn-settings').addEventListener('click', () => this.openSettingsDialog());
     $('#btn-settings-side').addEventListener('click', () => this.openSettingsDialog());
     $('#model-select').addEventListener('change', (e) => this.selectProfile(e.target.value));
@@ -114,7 +132,7 @@ export class App {
     $('#btn-menu').addEventListener('click', () => toggleMenu(!$('#side').classList.contains('open')));
     $('#scrim').addEventListener('click', () => toggleMenu(false));
     $('#side').addEventListener('click', (e) => {
-      if (e.target.closest('#btn-folder, #btn-settings-side, #orb')) toggleMenu(false);
+      if (e.target.closest('#btn-folder, #btn-settings-side, #orb, [data-open], #btn-github')) toggleMenu(false);
     });
   }
 
@@ -127,7 +145,7 @@ export class App {
   showSupportBanner() {
     const notes = [];
     if (!Voice.canListen) notes.push('Voice listening works in Chrome or Edge. In this browser you can still type, and answers can still be read aloud.');
-    if (!window.showDirectoryPicker) notes.push('This browser cannot give write access to a folder, so use “Upload a folder” (read-only).');
+    if (!window.showDirectoryPicker) notes.push('This browser cannot give write access to a folder. Use “Upload a folder” or import a public GitHub repo (both read-only).');
     if (notes.length) {
       $('#banner').textContent = notes.join(' ');
       $('#banner').hidden = false;
@@ -231,6 +249,38 @@ export class App {
     }
   }
 
+  async importGithub() {
+    const dialog = $('#gh-dialog');
+    const input = $('#gh-input');
+    const error = $('#gh-error');
+    error.textContent = '';
+    input.value = '';
+    const address = await new Promise((resolve) => {
+      let value = null;
+      const form = $('#gh-form');
+      const onSubmit = () => {
+        value = input.value.trim();
+      };
+      const onClose = () => {
+        form.removeEventListener('submit', onSubmit);
+        dialog.removeEventListener('close', onClose);
+        resolve(value);
+      };
+      $('#gh-cancel').onclick = () => dialog.close('cancel');
+      form.addEventListener('submit', onSubmit);
+      dialog.addEventListener('close', onClose);
+      dialog.showModal();
+      input.focus();
+    });
+    if (!address) return;
+    this.toast('Reading the repository list…');
+    try {
+      await this.setProject(await GithubProject.load(address));
+    } catch (e) {
+      this.toast(e instanceof ProjectError ? e.message : `Could not import: ${e?.message || e}`, true);
+    }
+  }
+
   async setProject(project) {
     this.project = project;
     this.tools = new ToolRunner(project, {
@@ -274,6 +324,11 @@ export class App {
   }
 
   async openSettingsDialog() {
+    if (hasVault() && !this.vaultPass) {
+      // Never overwrite a locked vault: unlock it first so no saved key is lost.
+      await this.unlockVault();
+      if (!this.vaultPass) return;
+    }
     this.dialogOpen = true;
     try {
       const result = await openSettings({
@@ -283,14 +338,37 @@ export class App {
         onTest: (profile, key) => testProfile(profile, key),
         onReset: () => {
           clearAll();
+          clearChats();
+          removeVault();
           location.reload();
+        },
+        hasPassphrase: Boolean(this.vaultPass),
+        onBackup: (includeKeys) => this.backup(includeKeys),
+        onRestore: (file) => this.restore(file),
+        onClearChats: () => {
+          clearChats();
+          this.chatId = null;
+          this.renderHistory();
+          this.toast('Saved chats deleted.');
         },
       });
       if (!result) return;
       this.settings = result.settings;
       this.keys = result.keys;
+      if (result.vaultPass) {
+        if (result.vaultPass.length < MIN_PASSPHRASE) {
+          this.settings.lockKeys = false;
+          this.toast(`Keys were not locked: the passphrase needs ${MIN_PASSPHRASE} or more characters.`, true);
+        } else {
+          this.vaultPass = result.vaultPass;
+        }
+      }
+      if (this.settings.lockKeys && !this.vaultPass) {
+        this.settings.lockKeys = false;
+        this.toast('Keys were not locked: choose a passphrase first.', true);
+      }
       saveSettings(this.settings);
-      saveKeys(this.keys, this.settings.rememberKeys);
+      await this.persistKeys();
       this.wakeRe = buildRegex(parseWords(this.settings.wakeWords));
       this.brain = null;
       this.renderModels();
@@ -301,11 +379,142 @@ export class App {
     }
   }
 
+  /** Keys go to one of three places: locked on this device, plain on this device, or this tab only. */
+  async persistKeys() {
+    if (this.settings.lockKeys && this.vaultPass) {
+      await saveVault(this.keys, this.vaultPass);
+      saveKeys({}, false); // no plain copy anywhere
+    } else {
+      removeVault();
+      saveKeys(this.keys, this.settings.rememberKeys);
+    }
+  }
+
+  async unlockVault() {
+    for (;;) {
+      const pass = await askPassphrase({
+        title: 'Unlock your API keys',
+        message: 'Your saved keys are encrypted on this device. Enter the passphrase to use them. Skip to continue without them.',
+        okLabel: 'Unlock',
+        cancelLabel: 'Skip',
+      });
+      if (pass === null) {
+        this.toast('Keys stay locked. Reload the page to unlock them later.');
+        return;
+      }
+      try {
+        this.keys = { ...this.keys, ...(await openVault(pass)) };
+        this.vaultPass = pass;
+        this.settings.lockKeys = true;
+        this.renderModels();
+        this.toast('Keys unlocked.');
+        return;
+      } catch (e) {
+        this.toast(e.message, true);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------ saved chats and backups
+  renderHistory() {
+    const chats = listChats();
+    const list = $('#history-list');
+    list.replaceChildren(
+      ...chats.map((c) =>
+        h('li', {},
+          h('button', { type: 'button', class: 'open', dataset: { open: c.id }, 'aria-current': c.id === this.chatId ? 'true' : null },
+            h('span', { class: 'title', text: c.title || 'Untitled chat' }),
+            h('span', { class: 'when', text: `${new Date(c.updated).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}${c.project ? ` · ${c.project}` : ''}` })),
+          h('button', { type: 'button', class: 'del', dataset: { delete: c.id }, 'aria-label': `Delete chat ${c.title || ''}`, text: '×' })),
+      ),
+    );
+    $('#history-empty').hidden = chats.length > 0;
+  }
+
+  autosave() {
+    if (this.settings.saveChats === false) return;
+    const log = this.chat.log;
+    const first = log.find((item) => item.t === 'user');
+    if (!first) return;
+    if (!this.chatId) this.chatId = uid();
+    saveChat(
+      { id: this.chatId, title: first.text, project: this.project?.name, model: this.profile.name, log },
+      Object.values(this.keys),
+    );
+    this.renderHistory();
+  }
+
+  openChat(id) {
+    const saved = getChat(id);
+    if (!saved || this.busy) return;
+    this.stopAnswering();
+    this.chatId = id;
+    this.brain = null;
+    this.pendingTurns = turnsFromLog(saved.log);
+    this.chat.restore(saved.log);
+    this.chat.addSystem(
+      saved.project && saved.project !== this.project?.name
+        ? `Chat restored. It was about “${saved.project}”: choose that folder again so files can be read.`
+        : 'Chat restored. Pick up where we left off.',
+    );
+    this.renderHistory();
+  }
+
+  async backup(includeKeys) {
+    const passphrase = await askPassphrase({
+      title: 'Back up to an encrypted file',
+      message: 'Choose a passphrase for this backup. It cannot be recovered, and the file is useless without it.',
+      confirm: true,
+      okLabel: 'Create backup',
+    });
+    if (!passphrase) return;
+    try {
+      const blob = await makeBackup({ settings: this.settings, keys: this.keys, includeKeys }, passphrase);
+      downloadText(`bro-backup-${new Date().toISOString().slice(0, 10)}.bro`, JSON.stringify(blob));
+      this.toast(includeKeys ? 'Backup saved, including keys.' : 'Backup saved. Keys were not included.');
+    } catch (e) {
+      this.toast(e.message, true);
+    }
+  }
+
+  async restore(file) {
+    let blob;
+    try {
+      blob = JSON.parse(await file.text());
+    } catch {
+      this.toast('That file is not a B.R.O. backup.', true);
+      return;
+    }
+    const passphrase = await askPassphrase({ title: 'Restore a backup', message: 'Enter the passphrase this backup was made with.', okLabel: 'Restore' });
+    if (!passphrase) return;
+    try {
+      const data = await readBackup(blob, passphrase);
+      mergeChats(data.chats);
+      if (data.settings?.profiles?.length) {
+        this.settings = { ...DEFAULT_SETTINGS, ...data.settings, lockKeys: this.settings.lockKeys };
+        saveSettings(this.settings);
+      }
+      if (data.keys) {
+        this.keys = { ...this.keys, ...data.keys };
+        await this.persistKeys();
+      }
+      this.renderModels();
+      this.renderHistory();
+      this.toast(`Restored ${data.chats?.length || 0} chats${data.keys ? ' and keys' : ''}.`);
+    } catch (e) {
+      this.toast(e.message, true);
+    }
+  }
+
   async ensureBrain() {
     if (this.brain) return this.brain;
     const profile = this.profile;
     const system = await buildSystem(this.project, profile);
     this.brain = makeBrain(profile, this.keys[profile.id] || '', this.tools, system);
+    if (this.pendingTurns) {
+      this.brain.messages = this.pendingTurns;
+      this.pendingTurns = null;
+    }
     return this.brain;
   }
 
@@ -421,11 +630,12 @@ export class App {
       } else {
         const message = failure instanceof BrainError ? failure.message : `Something went wrong: ${failure?.message || failure}`;
         this.chat.addAssistant(message, { error: true });
-        await this.maybeSpeak('I hit a problem. Check the screen.', source);
+        await this.maybeSpeak('Hit a problem. Check the screen.', source);
       }
     } else {
       const answer = reply || '(no answer)';
       this.chat.addAssistant(answer);
+      this.autosave();
       await this.maybeSpeak(answer, source);
     }
     if (this.listening) this.awakeUntil = Date.now() + this.settings.conversationSeconds * 1000;
@@ -440,7 +650,7 @@ export class App {
   async maybeSpeak(text, source) {
     const preference = this.settings.speak;
     if (preference === 'off' || (preference === 'voice' && source !== 'voice') || !Voice.canSpeak) return;
-    this.voice.pause(); // never listen to my own voice
+    this.voice.pause(); // never listen to its own voice
     this.refreshOrb();
     const speaking = this.voice.speak(cleanForSpeech(text), { rate: this.settings.rate, voiceURI: this.settings.voiceURI });
     this.refreshOrb();
@@ -456,20 +666,20 @@ export class App {
       case 'switch': {
         const profile = matchProfile(arg, this.settings.profiles);
         if (!profile) {
-          await this.say(`I don't have a model called ${arg}. Say “list models” to hear what I have.`, source);
+          await this.say(`No model called ${arg}. Say “list models” to hear the options.`, source);
           return;
         }
         await this.selectProfile(profile.id);
-        const warning = needsKey(profile) && !this.keys[profile.id] ? ' Add its API key in Settings before asking me anything.' : '';
+        const warning = needsKey(profile) && !this.keys[profile.id] ? ' Add its API key in Settings before asking anything.' : '';
         await this.say(`Switched to ${profile.name}. Starting a fresh conversation.${warning}`, source);
         return;
       }
       case 'which':
-        await this.say(`I'm using ${this.profile.name}${this.profile.model ? ` (${this.profile.model})` : ''}.`, source);
+        await this.say(`Running on ${this.profile.name}${this.profile.model ? ` (${this.profile.model})` : ''}.`, source);
         return;
       case 'list': {
         const names = this.settings.profiles.map((p) => p.name).join(', ');
-        await this.say(`My models are: ${names}. I'm using ${this.profile.name}.`, source);
+        await this.say(`Available models: ${names}. Running on ${this.profile.name}.`, source);
         return;
       }
       case 'reset':
@@ -478,7 +688,7 @@ export class App {
         return;
       case 'stop':
         this.stopListening();
-        await this.say('Okay, I stopped listening. Tap the mic to start again.', source);
+        await this.say('Stopped listening. Tap the mic to start again.', source);
         return;
       default:
         await this.say(HELP_TEXT, source);
@@ -488,8 +698,11 @@ export class App {
   newChat() {
     this.stopAnswering();
     this.brain = null;
+    this.chatId = null;
+    this.pendingTurns = null;
     this.toolHandles.clear();
     this.showWelcome();
+    this.renderHistory();
     this.showInterim('');
   }
 }

@@ -2,6 +2,7 @@
 import { $, h } from './util.js';
 import { lineDiff, countChanges } from './diff.js';
 import { newProfile, DEFAULT_SETTINGS } from './settings.js';
+import { MIN_PASSPHRASE } from './vault.js';
 
 const TYPE_LABELS = { claude: 'Claude (Anthropic)', openai: 'OpenAI-compatible', ollama: 'Ollama (on this PC)' };
 const BASE_HINTS = {
@@ -63,7 +64,7 @@ export function askApproval({ path, content, previous, writable }) {
  * Opens Settings. Resolves to {settings, keys} when saved, or null when cancelled.
  * onTest(profile, key) -> Promise<string> powers each model's "Test" button.
  */
-export function openSettings({ settings, keys, voices, onTest, onReset }) {
+export function openSettings({ settings, keys, voices, onTest, onReset, onBackup, onRestore, onClearChats, hasPassphrase }) {
   const dialog = $('#settings-dialog');
   const draft = JSON.parse(JSON.stringify(settings.profiles));
   const keyDraft = { ...keys };
@@ -144,6 +145,26 @@ export function openSettings({ settings, keys, voices, onTest, onReset }) {
   };
 
   $('#remember-keys').checked = Boolean(settings.rememberKeys);
+  $('#save-chats').checked = settings.saveChats !== false;
+  $('#lock-keys').checked = Boolean(settings.lockKeys);
+  $('#vault-pass').value = '';
+  $('#backup-keys').checked = false;
+  const syncVault = () => {
+    // Asking for a passphrase is only needed when locking is on and none has been chosen this session.
+    $('#vault-pass-wrap').hidden = !$('#lock-keys').checked || hasPassphrase;
+  };
+  $('#lock-keys').onchange = syncVault;
+  syncVault();
+  $('#btn-backup').onclick = () => onBackup($('#backup-keys').checked);
+  $('#btn-restore').onclick = () => $('#restore-input').click();
+  $('#restore-input').onchange = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) onRestore(file);
+  };
+  $('#btn-clear-chats').onclick = () => {
+    if (window.confirm('Delete every chat saved on this device? This cannot be undone.')) onClearChats();
+  };
   $('#set-wake').value = settings.wakeWords;
   $('#set-window').value = settings.conversationSeconds;
   $('#set-speak').value = settings.speak;
@@ -177,6 +198,8 @@ export function openSettings({ settings, keys, voices, onTest, onReset }) {
           profiles: cleaned,
           activeId: cleaned.some((p) => p.id === activeId) ? activeId : cleaned[0].id,
           rememberKeys: $('#remember-keys').checked,
+          saveChats: $('#save-chats').checked,
+          lockKeys: $('#lock-keys').checked,
           wakeWords: $('#set-wake').value.trim() || DEFAULT_SETTINGS.wakeWords,
           conversationSeconds: Math.min(300, Math.max(5, Number($('#set-window').value) || DEFAULT_SETTINGS.conversationSeconds)),
           speak: $('#set-speak').value,
@@ -184,10 +207,62 @@ export function openSettings({ settings, keys, voices, onTest, onReset }) {
           rate: Number($('#set-rate').value) || fallbackRate,
         },
         keys: Object.fromEntries(Object.entries(keyDraft).filter(([id, k]) => k && cleaned.some((p) => p.id === id))),
+        vaultPass: $('#vault-pass').value,
       });
     };
     dialog.returnValue = '';
     dialog.addEventListener('close', onClose);
     dialog.showModal();
+  });
+}
+
+// ---------------------------------------------------------------- passphrase
+/**
+ * Ask for a passphrase. Resolves to the passphrase, or null if cancelled.
+ * confirm: ask twice and enforce the minimum length (used when creating a passphrase).
+ */
+export function askPassphrase({ title, message, confirm = false, okLabel = 'Continue', cancelLabel = 'Cancel' }) {
+  const dialog = $('#pass-dialog');
+  const input = $('#pass-input');
+  const again = $('#pass-confirm');
+  const error = $('#pass-error');
+  $('#pass-title').textContent = title;
+  $('#pass-message').textContent = message;
+  $('#pass-ok').textContent = okLabel;
+  $('#pass-cancel').textContent = cancelLabel;
+  $('#pass-confirm-wrap').hidden = !confirm;
+  input.value = '';
+  again.value = '';
+  error.textContent = '';
+
+  return new Promise((resolve) => {
+    let result = null;
+    const form = $('#pass-form');
+    const onSubmit = (event) => {
+      if (confirm && input.value.length < MIN_PASSPHRASE) {
+        event.preventDefault();
+        error.textContent = `Use at least ${MIN_PASSPHRASE} characters.`;
+      } else if (confirm && input.value !== again.value) {
+        event.preventDefault();
+        error.textContent = 'The two passphrases do not match.';
+      } else if (!input.value) {
+        event.preventDefault();
+        error.textContent = 'Type the passphrase.';
+      } else {
+        result = input.value;
+      }
+    };
+    const onClose = () => {
+      form.removeEventListener('submit', onSubmit);
+      dialog.removeEventListener('close', onClose);
+      input.value = '';
+      again.value = '';
+      resolve(result);
+    };
+    $('#pass-cancel').onclick = () => dialog.close('cancel');
+    form.addEventListener('submit', onSubmit);
+    dialog.addEventListener('close', onClose);
+    dialog.showModal();
+    input.focus();
   });
 }

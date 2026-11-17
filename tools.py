@@ -86,6 +86,18 @@ TOOL_SCHEMAS = [
 ]
 
 
+PLUGIN_TOOLS = {}  # name -> function(root, **args), filled in by plugins.py
+
+
+def register_tool(schema, run):
+    """Add a tool the AI may call. Used by plugins; built-in tools cannot be replaced."""
+    name = schema["name"]
+    if name in PLUGIN_TOOLS or any(t["name"] == name for t in TOOL_SCHEMAS):
+        raise ValueError(f"a tool called {name} already exists")
+    TOOL_SCHEMAS.append(schema)
+    PLUGIN_TOOLS[name] = run
+
+
 class ProjectTools:
     def __init__(self, root, confirm):
         self.root = Path(root).resolve()
@@ -202,6 +214,11 @@ class ProjectTools:
 
     # ---------- dispatcher ----------
     def call(self, name, args):
+        if name in PLUGIN_TOOLS:
+            try:
+                return str(PLUGIN_TOOLS[name](self.root, **args))
+            except Exception as e:
+                return f"Error: {e}"
         fn = getattr(self, name, None)
         if name not in {t["name"] for t in TOOL_SCHEMAS} or fn is None:
             return f"Unknown tool: {name}"
