@@ -23,9 +23,21 @@ class BrainError(Exception):
     """A problem the user can fix (missing key, server not running...). The message is shown as-is."""
 
 
+THINKING_LOST = "The model got lost in its own thinking and gave no answer. Ask again, or switch to a model without a thinking mode."
+
+
 def strip_thinking(text):
-    # Some reasoning models put their thinking inside <think> tags. Never show or speak it.
-    return re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL).strip()
+    """Remove a reasoning model's thinking so it is never shown or spoken.
+
+    Handles all three shapes: <think>...</think> blocks, a lone </think> (Qwen3 starts its reply already
+    "inside" the thinking, so only the closing tag appears), and a <think> that never closes.
+    """
+    text = text or ""
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]          # the answer is whatever follows the last closing tag
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = text.split("<think>", 1)[0]               # an unclosed <think> swallows the rest
+    return text.strip()
 
 
 # ---------------------------------------------------------------- Ollama helpers
@@ -150,6 +162,12 @@ class OllamaBrain(BaseBrain):
         ]
         self._send_think = profile.get("think") is not None
 
+    def _no_think(self):
+        """Qwen3 models honour a '/no_think' switch in the instructions, even when Ollama ignores the think setting."""
+        if self.profile.get("think") is False and "qwen3" in self.model.lower():
+            return "\n\n/no_think"
+        return ""
+
     def prepare(self):
         if not ensure_ollama(self.base):
             raise BrainError(
@@ -174,7 +192,7 @@ class OllamaBrain(BaseBrain):
     def _chat(self):
         payload = {
             "model": self.model,
-            "messages": [{"role": "system", "content": self.system}] + self.messages,
+            "messages": [{"role": "system", "content": self.system + self._no_think()}] + self.messages,
             "tools": self.tool_defs,
             "stream": False,
             "keep_alive": self.profile.get("keep_alive", "30m"),
@@ -209,9 +227,10 @@ class OllamaBrain(BaseBrain):
         for _ in range(config.MAX_TOOL_STEPS):
             msg = self._chat()
             calls = msg.get("tool_calls") or []
-            self.messages.append({k: v for k, v in msg.items() if k != "thinking"})
+            self.messages.append({**{k: v for k, v in msg.items() if k != "thinking"},
+                                  "content": strip_thinking(msg.get("content"))})  # never feed old thinking back in
             if not calls:
-                return strip_thinking(msg.get("content"))
+                return strip_thinking(msg.get("content")) or (THINKING_LOST if (msg.get("content") or "").strip() else "")
             for call in calls:
                 fn = call.get("function", {})
                 args = fn.get("arguments") or {}
@@ -278,14 +297,14 @@ class OpenAICompatBrain(BaseBrain):
         for _ in range(config.MAX_TOOL_STEPS):
             msg = self._chat()
             calls = msg.get("tool_calls") or []
-            stored = {"role": "assistant", "content": msg.get("content") or ""}
+            stored = {"role": "assistant", "content": strip_thinking(msg.get("content"))}
             if calls:
                 for i, call in enumerate(calls):
                     call.setdefault("id", f"call_{int(time.time() * 1000)}_{i}")
                 stored["tool_calls"] = calls
             self.messages.append(stored)
             if not calls:
-                return strip_thinking(msg.get("content"))
+                return strip_thinking(msg.get("content")) or (THINKING_LOST if (msg.get("content") or "").strip() else "")
             for call in calls:
                 fn = call.get("function", {})
                 args = fn.get("arguments") or {}

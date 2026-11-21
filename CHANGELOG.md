@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet.
 
+## [0.4.1] - 2026-11-21
+
+### Fixed
+- The assistant no longer shows its "thinking" (for example "Okay, let's see. The user asked...") before the answer. Qwen3 and other reasoning models can emit a lone `</think>` with no opening tag; this was not removed before. Thinking is now stripped in every case (complete blocks, a lone `</think>`, an unfinished `<think>`), in both the desktop and web versions.
+- Old thinking is no longer stored in the conversation history, so it cannot leak into later answers.
+- For Qwen3 models with `think: false`, the `/no_think` switch is added to the instructions, which works even on older Ollama versions that ignore the `think` setting.
+- If a model produces only thinking and no answer, B.R.O. says so instead of reading the thoughts aloud.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

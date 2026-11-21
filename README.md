@@ -223,6 +223,7 @@ Run `.\run.bat --doctor` first. It checks libraries, microphone and model, and d
 | Problem | What to do |
 |---|---|
 | It never reacts to "Hey bro" | The window prints `heard: ...` for everything it hears. If it spells "bro" differently (like "brow"), add that word to `wake_words`. If nothing prints, try another `audio.input_device`. |
+| It shows its thinking ("Okay, let's see...") before the answer | The model is a reasoning model. Update to the latest Ollama, keep `think: false` in the profile, or switch to a model without a thinking mode, e.g. say "switch model to local small" (`llama3.2:3b`). |
 | It answers itself or hears its own voice | Use headphones or lower the speaker volume. |
 | Keeps triggering in a noisy room | Use `--mode wake` (default) or raise `audio.silence_threshold`. |
 | "Ollama isn't running" | Open the Ollama app once. B.R.O. also tries to start it. |

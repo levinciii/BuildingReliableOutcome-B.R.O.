@@ -15,7 +15,23 @@ const MAX_STEPS = 12;
 const MAX_HISTORY = 40;
 const LOOP_MESSAGE = 'Stuck in a loop of tool calls. Try asking again in a simpler way.';
 
-export const stripThinking = (text) => String(text ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+export const THINKING_LOST = 'The model got lost in its own thinking and gave no answer. Ask again, or switch to a model without a thinking mode.';
+
+/**
+ * Remove a reasoning model's thinking so it is never shown or spoken. Handles <think>...</think> blocks,
+ * a lone </think> (Qwen3 starts its reply already "inside" the thinking) and a <think> that never closes.
+ */
+export function stripThinking(text) {
+  let out = String(text ?? '');
+  const close = out.lastIndexOf('</think>');
+  if (close !== -1) out = out.slice(close + '</think>'.length);
+  out = out.replace(/<think>[\s\S]*?<\/think>/g, '');
+  const open = out.indexOf('<think>');
+  if (open !== -1) out = out.slice(0, open);
+  return out.trim();
+}
+
+const orLost = (raw) => stripThinking(raw) || (String(raw ?? '').trim() ? THINKING_LOST : '');
 
 function friendlyHttpError(status, bodyText, kind, profile) {
   let detail = '';
@@ -187,7 +203,7 @@ class OpenAIBrain extends BaseBrain {
       const message = data?.choices?.[0]?.message;
       if (!message) throw new BrainError('The service sent back an answer that could not be read.');
       const calls = message.tool_calls || [];
-      const stored = { role: 'assistant', content: message.content || '' };
+      const stored = { role: 'assistant', content: stripThinking(message.content) };
       if (calls.length) {
         calls.forEach((c, i) => {
           c.id = c.id || `call_${Date.now()}_${i}`;
@@ -195,7 +211,7 @@ class OpenAIBrain extends BaseBrain {
         stored.tool_calls = calls;
       }
       this.messages.push(stored);
-      if (!calls.length) return stripThinking(message.content);
+      if (!calls.length) return orLost(message.content);
       for (const call of calls) {
         const fn = call.function || {};
         this.messages.push({
@@ -215,6 +231,11 @@ class OllamaBrain extends BaseBrain {
     this.sendThink = this.profile.think !== undefined && this.profile.think !== null;
   }
 
+  /** Qwen3 models honour a '/no_think' switch in the instructions, even when Ollama ignores the think setting. */
+  noThink() {
+    return this.profile.think === false && /qwen3/i.test(this.profile.model || '') ? '\n\n/no_think' : '';
+  }
+
   async ask(text, { signal } = {}) {
     this.messages.push({ role: 'user', content: text });
     this.trim();
@@ -223,8 +244,8 @@ class OllamaBrain extends BaseBrain {
       const message = await this.chat(base, signal);
       const calls = message.tool_calls || [];
       const { thinking, ...stored } = message; // eslint-disable-line no-unused-vars
-      this.messages.push(stored);
-      if (!calls.length) return stripThinking(message.content);
+      this.messages.push({ ...stored, content: stripThinking(message.content) }); // never feed old thinking back in
+      if (!calls.length) return orLost(message.content);
       for (const call of calls) {
         const fn = call.function || {};
         this.messages.push({
@@ -240,7 +261,7 @@ class OllamaBrain extends BaseBrain {
   async chat(base, signal) {
     const body = {
       model: this.profile.model,
-      messages: [{ role: 'system', content: this.system }, ...this.messages],
+      messages: [{ role: 'system', content: this.system + this.noThink() }, ...this.messages],
       stream: false,
       keep_alive: this.profile.keepAlive || '30m',
       options: { num_ctx: Number(this.profile.numCtx) || 8192 },
