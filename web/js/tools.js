@@ -40,6 +40,15 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
+    name: 'recent_changes',
+    description:
+      "What changed recently in the project: the latest commits (from git or GitHub) and the project's change notes (CHANGELOG.md or similar), whichever exist. Use it for questions like 'what changed', 'latest commits' or 'what was done last'.",
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'integer', description: 'How many commits to show (default 15, max 50)' } },
+    },
+  },
+  {
     name: 'save_note',
     description: 'Save a short note about the project (decisions, TODOs, ideas) so it is remembered in future sessions.',
     input_schema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
@@ -53,6 +62,7 @@ export function describeCall(name, args) {
     case 'read_file': return `Reading ${a.path ?? 'a file'}`;
     case 'search_code': return `Searching for “${a.query ?? ''}”`;
     case 'write_file': return `Writing ${a.path ?? 'a file'}`;
+    case 'recent_changes': return 'Checking recent changes';
     case 'save_note': return 'Saving a note';
     default: return name;
   }
@@ -95,6 +105,7 @@ export class ToolRunner {
       case 'list_files': return p.list(args.subdir || '.');
       case 'read_file': return p.read(args.path);
       case 'search_code': return p.search(args.query);
+      case 'recent_changes': return p.recentChanges(args.limit);
       case 'save_note': {
         await p.appendNote(String(args.note ?? ''));
         return 'Note saved.';

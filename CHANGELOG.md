@@ -9,6 +9,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet.
 
+## [0.4.0] - 2026-11-19
+
+### Added
+- **Recent changes.** New `recent_changes` tool: ask what changed recently and B.R.O. reads the latest commits and the project's
+  `CHANGELOG.md` (or `CHANGES.md`, `HISTORY.md`, `RELEASES.md`, `NEWS.md`). Desktop uses `git log` and `git status`, can inspect one commit,
+  and falls back to git's own log file when git is missing. Web reads a chosen folder's `.git/logs/HEAD`, or a GitHub import's latest commits.
+  Author emails are never shown.
+- **Echo guard.** B.R.O. ignores its own voice when the microphone picks it up (desktop and web).
+
+### Changed
+- **Direct answers.** B.R.O. leads with the answer and no longer narrates its own process or thinks out loud.
+- **New colour palette.** Primary `#3A405A` and secondary `#F9DEC9` across the app, landing page, icons and installed-app theme,
+  with matching light and dark modes.
+
 ## [0.3.0] - 2026-11-17
 
 ### Changed

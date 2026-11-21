@@ -39,7 +39,67 @@ const extensionOf = (path) => {
   return dot > 0 ? name.slice(dot) : '';
 };
 
+const CHANGELOG_FILES = [
+  'CHANGELOG.md', 'Changelog.md', 'changelog.md', 'CHANGELOG', 'CHANGES.md', 'Changes.md', 'HISTORY.md', 'RELEASES.md', 'RELEASE_NOTES.md', 'NEWS.md',
+  'docs/CHANGELOG.md', 'docs/changelog.md', 'docs/HISTORY.md',
+];
+const MAX_CHANGELOG_CHARS = 3500;
+
+/** One line per commit from a git reflog line: "old new Name <mail> time tz<TAB>commit: message". Emails are dropped. */
+export function parseReflog(text, limit = 15) {
+  const out = [];
+  const lines = String(text ?? '').split('\n').filter(Boolean).reverse();
+  for (const line of lines) {
+    const m = line.match(/^\S+ (\S+) (.+?) <[^>]*> (\d+) [+-]\d{4}\t(.*)$/);
+    if (!m) continue;
+    const [, hash, author, seconds, message] = m;
+    if (/^checkout:/.test(message)) continue; // branch switching is not a change
+    out.push(`${hash.slice(0, 7)} ${new Date(Number(seconds) * 1000).toISOString().slice(0, 10)} ${author}: ${message}`);
+    if (out.length >= limit) break;
+  }
+  return out.join('\n');
+}
+
 class BaseProject {
+  /** Commit history as text, newest first. Folder projects override this; plain uploads have none. */
+  async gitLog() {
+    return null;
+  }
+
+  /** The project's own change notes (CHANGELOG.md and friends), cut to a sensible length. */
+  async changelog() {
+    for (const path of CHANGELOG_FILES) {
+      try {
+        const text = await this.readRaw(path);
+        if (text && text.trim()) {
+          return { path, text: text.length > MAX_CHANGELOG_CHARS ? `${text.slice(0, MAX_CHANGELOG_CHARS)}\n...[the rest of ${path} is cut off]` : text };
+        }
+      } catch {
+        /* not there: try the next name */
+      }
+    }
+    return null;
+  }
+
+  /** What changed recently: commits (when available) plus the project's change notes. */
+  async recentChanges(limit = 15) {
+    const count = Math.min(Math.max(Number(limit) || 15, 1), 50);
+    const parts = [];
+    let log = null;
+    try {
+      log = await this.gitLog(count);
+    } catch {
+      log = null;
+    }
+    if (log) parts.push(`Recent commits (newest first):\n${log}`);
+    const notes = await this.changelog();
+    if (notes) parts.push(`Change notes from ${notes.path}:\n${notes.text}`);
+    if (!parts.length) {
+      return 'No commit history or changelog file is available for this project. Folders chosen in Chrome or Edge show local commits; a public GitHub repo shows its latest commits; a CHANGELOG.md is read if present.';
+    }
+    return parts.join('\n\n');
+  }
+
   /** Short listing for the AI's instructions. */
   async tree(limit = 150) {
     const files = [];
@@ -144,6 +204,17 @@ export class FsaProject extends BaseProject {
     this.handle = handle;
     this.name = handle.name;
     this.writable = true;
+  }
+
+  /** Local commits, read from git's own reflog file (.git/logs/HEAD). Nothing is executed. */
+  async gitLog(limit) {
+    try {
+      const logs = await (await this.handle.getDirectoryHandle('.git')).getDirectoryHandle('logs');
+      const file = await (await logs.getFileHandle('HEAD')).getFile();
+      return parseReflog(await file.text(), limit) || null;
+    } catch {
+      return null;
+    }
   }
 
   async dirAt(segments, create = false) {
@@ -285,6 +356,7 @@ export class GithubProject extends UploadProject {
     if (!treeResponse.ok) throw new ProjectError(`Could not read the file list (${treeResponse.status}).`);
     const tree = await treeResponse.json();
     const project = new GithubProject();
+    project.gh = { api, fetchImpl };
     project.name = `${owner}/${repo}`;
     project.truncated = Boolean(tree.truncated);
     for (const entry of tree.tree || []) {
@@ -307,5 +379,16 @@ export class GithubProject extends UploadProject {
 
   constructor() {
     super([]);
+  }
+
+  /** The latest commits on the default branch, straight from GitHub's public API. */
+  async gitLog(limit) {
+    const { api, fetchImpl } = this.gh;
+    const response = await fetchImpl(`${api}/commits?per_page=${limit}`, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!response.ok) return null;
+    const commits = await response.json();
+    return commits
+      .map((c) => `${String(c.sha).slice(0, 7)} ${String(c.commit?.author?.date || '').slice(0, 10)} ${c.commit?.author?.name || 'unknown'}: ${String(c.commit?.message || '').split('\n')[0]}`)
+      .join('\n') || null;
   }
 }

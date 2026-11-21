@@ -37,3 +37,18 @@ def extract(text, regex):
 def is_noise(text):
     cleaned = re.sub(r"[^a-z0-9 ]", "", (text or "").lower()).strip()
     return not cleaned or cleaned in HALLUCINATIONS
+
+
+def _words(text):
+    return re.findall(r"[a-z0-9']+", str(text).lower())
+
+
+def is_echo(heard, spoken, seconds_since_spoken, window=10.0):
+    """True when the microphone picked up B.R.O.'s own voice: the words just heard are (mostly) what was just said aloud."""
+    if not spoken or seconds_since_spoken > window:
+        return False
+    heard_words = _words(heard)
+    if len(heard_words) < 3:
+        return False
+    spoken_words = set(_words(spoken))
+    return sum(w in spoken_words for w in heard_words) / len(heard_words) >= 0.75

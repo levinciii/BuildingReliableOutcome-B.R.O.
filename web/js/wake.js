@@ -40,3 +40,14 @@ export function isNoise(text) {
   const cleaned = String(text ?? '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
   return !cleaned || HALLUCINATIONS.has(cleaned);
 }
+
+const wordsOf = (text) => String(text ?? '').toLowerCase().match(/[a-z0-9']+/g) || [];
+
+/** True when the microphone picked up B.R.O.'s own voice: the words just heard are (mostly) what was just said aloud. */
+export function isEcho(heard, spoken, msSinceSpoken, windowMs = 10000) {
+  if (!spoken || msSinceSpoken > windowMs) return false;
+  const heardWords = wordsOf(heard);
+  if (heardWords.length < 3) return false;
+  const spokenWords = new Set(wordsOf(spoken));
+  return heardWords.filter((w) => spokenWords.has(w)).length / heardWords.length >= 0.75;
+}

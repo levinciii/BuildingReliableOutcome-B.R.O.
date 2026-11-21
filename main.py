@@ -40,6 +40,7 @@ class App:
         self.awake_until = 0.0
         self.sounds = bool(settings.get("sounds", True))
         self.session_id = sessions.new_id()
+        self.last_spoken = ("", 0.0)  # what was said aloud last, and when it ended (to ignore its own echo)
 
     # ------------------------------------------------------------ output
     def chime(self, kind):
@@ -58,6 +59,7 @@ class App:
         except Exception as e:
             print(f"  (voice problem: {e}. Continuing with text only.)")
             self.speaker = None
+        self.last_spoken = (text, time.time())
         if self.listener:
             time.sleep(0.3)           # let the room echo die down
             self.listener.flush()     # and never hear its own voice
@@ -211,6 +213,8 @@ class App:
             text = self.listener.listen(wait_seconds=None)
             if not text:
                 continue
+            if wake.is_echo(text, self.last_spoken[0], time.time() - self.last_spoken[1]):
+                continue  # that was B.R.O.'s own voice coming back through the microphone
             woke, command = wake.extract(text, self.wake_re)
             in_window = time.time() < self.awake_until
             if self.mode == "wake" and not woke and not in_window:

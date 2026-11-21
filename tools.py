@@ -4,6 +4,7 @@ Anything that changes your files or runs a command asks for a typed y/n first.
 """
 import itertools
 import os
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -75,6 +76,17 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "recent_changes",
+        "description": "What changed recently in the project: latest git commits, uncommitted changes, and the project's change notes (CHANGELOG.md or similar). Pass a commit hash to see the files changed in that commit. Use it for 'what changed', 'latest commits', 'what was done last'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "How many commits to show (default 15, max 50)"},
+                "commit": {"type": "string", "description": "Optional commit hash to inspect"},
+            },
+        },
+    },
+    {
         "name": "save_note",
         "description": "Save a short note about the project (decisions, TODOs, ideas) so it is remembered in future sessions.",
         "input_schema": {
@@ -85,6 +97,8 @@ TOOL_SCHEMAS = [
     },
 ]
 
+
+CHANGELOG_FILES = ["CHANGELOG.md", "Changelog.md", "changelog.md", "CHANGELOG", "CHANGES.md", "HISTORY.md", "RELEASES.md", "RELEASE_NOTES.md", "NEWS.md", "docs/CHANGELOG.md", "docs/changelog.md"]
 
 PLUGIN_TOOLS = {}  # name -> function(root, **args), filled in by plugins.py
 
@@ -205,6 +219,61 @@ class ProjectTools:
         if len(out) > 8000:
             out = out[:8000] + "\n...[truncated]"
         return f"Exit code {r.returncode}\n{out}"
+
+    def _git(self, args):
+        """Run a read-only git command in the project. Returns its text, or None if git is missing or it failed."""
+        env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
+        try:
+            r = subprocess.run(["git", "-C", str(self.root), *args], capture_output=True, text=True, timeout=15, env=env)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    def _reflog(self, limit):
+        """Fallback when the git program is not installed: read git's own log file. Emails are dropped."""
+        try:
+            text = (self.root / ".git" / "logs" / "HEAD").read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return None
+        out = []
+        for line in reversed(text.splitlines()):
+            m = re.match(r"^\S+ (\S+) (.+?) <[^>]*> (\d+) [+-]\d{4}\t(.*)$", line)
+            if not m or m.group(4).startswith("checkout:"):
+                continue
+            day = datetime.fromtimestamp(int(m.group(3))).strftime("%Y-%m-%d")
+            out.append(f"{m.group(1)[:7]} {day} {m.group(2)}: {m.group(4)}")
+            if len(out) >= limit:
+                break
+        return "\n".join(out) or None
+
+    def recent_changes(self, limit=15, commit=""):
+        limit = min(max(int(limit or 15), 1), 50)
+        if commit:
+            if not re.fullmatch(r"[0-9a-fA-F]{4,40}", str(commit)):
+                return "Error: give a commit hash made of 4 to 40 hex characters."
+            shown = self._git(["show", "--stat", "--date=short", "--pretty=format:%h %ad %an: %s%n%n%b", str(commit)])
+            return (shown or "That commit was not found.")[:5000]
+        parts = []
+        if (self.root / ".git").exists():
+            branch = self._git(["rev-parse", "--abbrev-ref", "HEAD"])
+            log = self._git(["log", f"-n{limit}", "--date=short", "--pretty=format:%h %ad %an: %s"]) or self._reflog(limit)
+            if log:
+                parts.append(f"Recent commits on {branch or 'this branch'} (newest first):\n{log}")
+            status = self._git(["status", "--short"])
+            if status:
+                lines = status.splitlines()
+                parts.append("Uncommitted changes:\n" + "\n".join(lines[:30]) + (f"\n...and {len(lines) - 30} more" if len(lines) > 30 else ""))
+            elif status == "":
+                parts.append("No uncommitted changes.")
+        for name in CHANGELOG_FILES:
+            path = self.root / name
+            if path.is_file():
+                text = path.read_text(encoding="utf-8", errors="ignore").strip()
+                if text:
+                    cut = f"\n...[the rest of {name} is cut off]" if len(text) > 3500 else ""
+                    parts.append(f"Change notes from {name}:\n{text[:3500]}{cut}")
+                    break
+        return "\n\n".join(parts) or "No git history or changelog file found in this project."
 
     def save_note(self, note):
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")

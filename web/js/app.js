@@ -6,7 +6,7 @@ import { ToolRunner } from './tools.js';
 import { buildSystem } from './prompt.js';
 import { makeBrain, testProfile, BrainError } from './brains.js';
 import { Voice, cleanForSpeech } from './voice.js';
-import { buildRegex, parseWords, extract, isNoise } from './wake.js';
+import { buildRegex, parseWords, extract, isEcho, isNoise } from './wake.js';
 import { parse as parseCommand, matchProfile, HELP_TEXT } from './commands.js';
 import { ChatView } from './chat.js';
 import { askApproval, openSettings, askPassphrase } from './dialogs.js';
@@ -51,6 +51,7 @@ export class App {
     this.dialogOpen = false;
     this.awakeUntil = 0;
     this.toolHandles = new Map();
+    this.lastSpoken = { text: '', at: 0 };
     this.chatId = null;
     this.pendingTurns = null; // earlier questions and answers, when a saved chat is reopened
     this.vaultPass = null; // the key passphrase, kept in memory only
@@ -565,6 +566,7 @@ export class App {
   /** Called with every finished sentence the browser recognised. */
   onSpeech(text) {
     if (!text || this.busy || this.voice.speaking || this.dialogOpen) return;
+    if (isEcho(text, this.lastSpoken.text, Date.now() - this.lastSpoken.at)) return; // its own voice coming back through the mic
     const mode = this.settings.mode;
     const { woke, command } = extract(text, this.wakeRe);
     const inWindow = Date.now() < this.awakeUntil;
@@ -655,6 +657,7 @@ export class App {
     const speaking = this.voice.speak(cleanForSpeech(text), { rate: this.settings.rate, voiceURI: this.settings.voiceURI });
     this.refreshOrb();
     await speaking;
+    this.lastSpoken = { text: cleanForSpeech(text), at: Date.now() };
     await sleep(250);
     this.voice.resume();
     this.refreshOrb();

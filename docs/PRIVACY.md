@@ -33,6 +33,7 @@ Restoring needs the same passphrase. Keep backups somewhere you trust.
 
 - Your questions, and the project text B.R.O. reads to answer them, go to the AI provider you picked (or stay on your machine with a local Ollama model).
 - Speech: desktop speech recognition is local. In the browser, Chrome sends audio to Google's speech service.
-- GitHub import fetches files from GitHub. No token is used.
+- GitHub import fetches files and recent commits from GitHub's public API. No token is used.
+- Asking about recent changes reads git history on your machine (desktop), or the folder's `.git/logs/HEAD` file (web). Author emails are removed.
 
 Nothing else is sent anywhere.

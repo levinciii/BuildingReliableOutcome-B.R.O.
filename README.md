@@ -6,7 +6,8 @@ It can read, search, edit and run your project, and it always asks before changi
 - **Free and private by default.** It runs an AI model on your own computer. No account, no tokens.
 - **Hands-free.** The microphone stays open, so there is nothing to press.
 - **Your choice of brain.** Switch between a local model, Claude, OpenAI, or any OpenAI-compatible service.
-- **A teammate, not a chatbot.** It talks like a co-worker with the same goal as you (finishing the project) and sticks to coding. Off-topic questions get a friendly nudge back to the work.
+- **A teammate, not a chatbot.** It talks like a co-worker with the same goal as you (finishing the project) and sticks to coding. Answers start with the answer, with no thinking out loud. Off-topic questions get a friendly nudge back to the work.
+- **Knows what changed.** Ask what changed recently and it reads your latest commits and changelog file.
 - **Private.** No accounts, no B.R.O. server. Saved chats stay on your device with secrets removed.
 - **Yours to change.** MIT licensed, with plugins and a plain-English persona file. See [Make it yours](#9-make-it-yours).
 - **Two versions.** A desktop app (this folder) and a website version (the `web/` folder) that also installs on your phone.
@@ -69,6 +70,7 @@ Prefer a terminal? Open PowerShell in this folder and run `.\run.bat`.
 
 Tips:
 - Say **"Hey bro"** alone and it replies "Yes?" and waits for your question.
+- It answers directly: the first sentence is the result. It also ignores its own voice coming back through the microphone.
 - Short, focused questions work best: *"What does signup do in auth.py?"* beats *"Review everything."*
 - The first answer is slower because the model is loading. After that it stays loaded for 30 minutes.
 
@@ -79,6 +81,7 @@ Tips:
 | "Hey bro, give me an overview of this project" | It reads your files and explains them |
 | "Find where we open the database" | It searches your code |
 | "Add input validation to signup and write a test" | It proposes the change, then asks before writing files |
+| "What changed recently?" / "Show the latest commits" | Reads the git history and your `CHANGELOG.md` (or similar) and summarises it |
 | "Run the tests" | It asks, then runs them |
 | "Switch model to Claude" | Changes the AI model |
 | "Which model are you using?" / "List models" | Tells you |
@@ -101,6 +104,19 @@ You can also type commands: `/model claude`, `/models`, `/reset`, `/quit`.
 | `--doctor` | Check the setup and fix what it can. |
 | `--resume` | Continue the last saved conversation for this project. |
 | `--clear-sessions` | Delete every saved conversation and exit. |
+
+### Tracking recent changes
+
+Ask "what changed recently?", "what were the last commits?" or "what did we do last?". B.R.O. combines:
+
+| Source | Desktop | Web |
+|---|---|---|
+| Recent commits | `git log` in the project folder (falls back to git's own log file if git is not installed) | Chosen folder: local commits from `.git/logs/HEAD`. Imported GitHub repo: latest commits from GitHub |
+| Uncommitted work | `git status` | Not available |
+| Change notes | `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `RELEASES.md`, `NEWS.md` (root or `docs/`) | Same files |
+| One commit in detail | "What changed in commit abc1234?" | Not available |
+
+It only reads. Commit author emails are never shown.
 
 ## 5. Choosing and switching models
 
