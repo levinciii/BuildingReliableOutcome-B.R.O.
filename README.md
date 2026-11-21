@@ -40,7 +40,7 @@ It can read, search, edit and run your project, and it always asks before changi
 | Works without internet | Yes, with a local model | Only with a local Ollama model |
 | Needs installing | Yes | No |
 
-If you want the full experience, use the desktop app. If you just want to try it or use it from any computer, use the web version (see [section 9](#9-web-version)).
+If you want the full experience, use the desktop app. If you just want to try it or use it from any computer, use the web version (see [section 11](#11-web-version-and-phone)).
 
 ## 2. Install and start (desktop, Windows)
 
@@ -281,6 +281,10 @@ Full steps, including how to use a local Ollama model with the hosted site, are 
 | `.env` | Your keys (created by setup, never share) |
 | `web/` | The website version, landing page and phone app |
 | `docs/` | Guides: extending, phone, privacy |
+| `requirements.txt` | Python libraries installed by `setup.bat` |
+| `.env.example` | Template for your API keys (copy to `.env`) |
+| `.gitignore` | Keeps keys, chats and the private `.venv` out of GitHub |
+| `.github/` | Issue templates for bug reports and feature requests |
 | `LICENSE` | MIT license |
 | `CONTRIBUTING.md` | How to add your own features |
 | `CHANGELOG.md` | What changed in each version |
